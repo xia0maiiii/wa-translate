@@ -144,22 +144,18 @@ final class IncomingOverlay {
     /// 按最近一次读到的气泡摆译文；还没译的去请求。
     private func show() {
         guard let visible = last, !visible.bubbles.isEmpty else { return panel.orderOut(nil) }
-        var labels: [LabelsView.Label] = []
-        var floor = -CGFloat.infinity
+        var shown: [(frame: CGRect, text: String)] = []
         for bubble in visible.bubbles {
             guard let translated = translations[bubble.text] else {
                 request(bubble.text)
                 continue
             }
-            if translated.caseInsensitiveCompare(bubble.text) == .orderedSame { continue }
-            // 气泡右边够宽就贴着气泡放，否则靠聊天区右边缘。
-            let room = visible.area.maxX - bubble.frame.maxX - 20
-            let size = LabelsView.size(of: translated, maxWidth: min(max(room, 180), 460))
-            let x = room >= 180 ? bubble.frame.maxX + 8 : visible.area.maxX - size.width - 12
-            let y = max(bubble.frame.minY - visible.area.minY, floor + 3)
-            labels.append(LabelsView.Label(rect: CGRect(x: x - visible.area.minX, y: y, width: size.width, height: size.height), text: translated))
-            floor = y + size.height
+            if translated.caseInsensitiveCompare(bubble.text) != .orderedSame { shown.append((bubble.frame, translated)) }
         }
+        let frames = LabelLayout.frames(bubbles: shown.map(\.frame), area: visible.area) { index, limit in
+            LabelsView.size(of: shown[index].text, within: limit)
+        }
+        let labels = zip(frames, shown).map { LabelsView.Label(rect: $0, text: $1.text) }
         if labels.count != view.labels.count { Debug.log("译文层：显示 \(labels.count) 条译文") }
         view.labels = labels
         if labels.isEmpty { return panel.orderOut(nil) }

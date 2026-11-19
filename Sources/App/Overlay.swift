@@ -36,12 +36,12 @@ final class LabelsView: NSView {
 
     override var isFlipped: Bool { true }
 
-    /// 文字在给定标签宽度下占的大小（含内边距）。
-    static func size(of text: String, maxWidth: CGFloat) -> CGSize {
+    /// 文字在给定的最大宽高内占的大小（含内边距）。放不下时高度封顶，画的时候末行以省略号收尾。
+    static func size(of text: String, within limit: CGSize) -> CGSize {
         let bounds = NSAttributedString(string: text, attributes: [.font: font]).boundingRect(
-            with: CGSize(width: maxWidth - padding.width * 2, height: .greatestFiniteMagnitude),
+            with: CGSize(width: limit.width - padding.width * 2, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading])
-        return CGSize(width: ceil(bounds.width) + padding.width * 2, height: ceil(bounds.height) + padding.height * 2)
+        return CGSize(width: ceil(bounds.width) + padding.width * 2, height: min(ceil(bounds.height) + padding.height * 2, limit.height))
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -53,7 +53,7 @@ final class LabelsView: NSView {
             shape.stroke()
             NSAttributedString(string: label.text, attributes: [.font: Self.font, .foregroundColor: NSColor.labelColor])
                 .draw(with: label.rect.insetBy(dx: Self.padding.width, dy: Self.padding.height),
-                      options: [.usesLineFragmentOrigin, .usesFontLeading])
+                      options: [.usesLineFragmentOrigin, .usesFontLeading, .truncatesLastVisibleLine])
         }
     }
 }
@@ -72,7 +72,7 @@ final class Toast {
     func show(_ message: String, above anchor: CGRect?, isError: Bool = false, duration: TimeInterval?) {
         hideWork?.cancel()
         guard let anchor else { return hide() }
-        let size = LabelsView.size(of: message, maxWidth: max(anchor.width, 240))
+        let size = LabelsView.size(of: message, within: CGSize(width: max(anchor.width, 240), height: 200))
         panel.place(at: CGRect(x: anchor.minX, y: anchor.minY - size.height - 12, width: size.width, height: size.height))
         view.labels = [LabelsView.Label(rect: CGRect(origin: .zero, size: size), text: message, isError: isError)]
         panel.orderFrontRegardless()

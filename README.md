@@ -59,6 +59,7 @@ Telegram 那版是往应用里加一个动态库再重新签名。WhatsApp 不�
 - 草稿里用选择器插入的 `@提及` 经过翻译后会变成普通文字，不再通知对方。需要提及时用 `!` 开头按原文发，或先关掉发送翻译。
 - 只处理普通文字消息的发送。编辑已发送的消息、图片说明文字不翻译，按 WhatsApp 原有方式处理或提示失败。
 - 气泡右侧空间不足（窗口很窄）时，译文靠聊天区右边缘显示，会盖住一部分气泡。
+- 译文的高度以气泡看得见的部分为限（最少约七行），放不下的以省略号收尾。带大图的长消息滚动一下，让气泡多露出一些，就能看到更多。
 - 界面元素是按无障碍标识找的（`ChatBar_ComposerTextView`、`ChatBar_SendButton`、`ChatMessagesTableView`、`WAMessageBubbleTableViewCell`）。WhatsApp 改了这些标识或消息描述的格式，就要更新 `Sources/App/ChatApp.swift` 和 `Sources/Core/Bubble.swift`。
 
 ## 源码

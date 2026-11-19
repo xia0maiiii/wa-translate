@@ -94,4 +94,26 @@ check(Credentials.load(supportDirectory: support, home: temp)?.key == "dk", "没
 try! JSONSerialization.data(withJSONObject: ["endpoint": "https://api.deepseek.com/chat/completions", "model": "w", "key": "wk"]).write(to: support.appendingPathComponent("config.json"))
 check(Credentials.load(supportDirectory: support, home: temp)?.key == "wk", "独立配置优先")
 
+// 译文标签的位置。聊天区 x 600…1500、y 100…900；measure 按「每条译文想要 300×高度」模拟。
+let pane = CGRect(x: 600, y: 100, width: 900, height: 800)
+func layout(_ bubbles: [CGRect], wants heights: [CGFloat]) -> [CGRect] {
+    LabelLayout.frames(bubbles: bubbles, area: pane) { index, limit in
+        CGSize(width: min(300, limit.width), height: min(heights[index], limit.height))
+    }
+}
+let beside = layout([CGRect(x: 616, y: 300, width: 400, height: 33)], wants: [20])[0]
+check(beside.minX == 616 + 400 + 8 - 600 && beside.minY == 200, "译文贴在气泡右侧、与气泡顶对齐")
+let scrolledOff = layout([CGRect(x: 616, y: -300, width: 400, height: 640)], wants: [200])[0]
+check(scrolledOff.minY == 0 && scrolledOff.maxY <= 800, "气泡顶部滚出可见范围时，译文仍在看得见的地方")
+let huge = layout([CGRect(x: 616, y: 300, width: 400, height: 300)], wants: [2500])[0]
+check(huge.height == 300, "很长的译文以气泡看得见的高度为限")
+let short = layout([CGRect(x: 616, y: 300, width: 400, height: 33)], wants: [2500])[0]
+check(short.height == LabelLayout.minimumHeight, "气泡很矮时译文也有最低高度")
+let stacked = layout([CGRect(x: 616, y: 300, width: 400, height: 33), CGRect(x: 616, y: 336, width: 400, height: 33)], wants: [60, 20])
+check(stacked[1].minY >= stacked[0].maxY, "上一条译文比气泡高时，下一条往下让，不重叠")
+let atBottom = layout([CGRect(x: 616, y: 860, width: 400, height: 33)], wants: [100])[0]
+check(atBottom.maxY <= 800, "最底下的气泡，译文不伸出可见范围")
+let wide = layout([CGRect(x: 616, y: 300, width: 800, height: 33)], wants: [20])[0]
+check(wide.maxX == 900 - 12, "气泡右边放不下时，译文靠聊天区右边缘")
+
 print("通过 \(checks) 项检查")
