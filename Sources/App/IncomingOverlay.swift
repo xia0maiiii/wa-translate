@@ -52,10 +52,12 @@ final class IncomingOverlay {
     }
 
     private let client: TranslationClient
-    private let queue = DispatchQueue(label: "watranslate.poll", qos: .utility)
+    private let queue = DispatchQueue(label: "watranslate.poll", qos: .userInitiated)
     private let panel = OverlayPanel()
     private let view = LabelsView()
     private var watch: Watch?
+    /// 跟随期间向系统声明「正在干活」。本程序没有常驻窗口，否则会被 App Nap 降速，轮询的定时器一拖就是好几秒。
+    private var activity: NSObjectProtocol?
     private var last: Visible?
     private var translations: [String: String] = [:]
     private var inFlight = Set<String>()
@@ -68,7 +70,12 @@ final class IncomingOverlay {
 
     /// `app` 是在前台的 WhatsApp；不在前台或功能关闭时传 nil，译文层随之隐藏。
     func follow(_ app: ChatApp?) {
+        if let activity { ProcessInfo.processInfo.endActivity(activity) }
+        activity = app.map { _ in
+            ProcessInfo.processInfo.beginActivity(options: .userInitiatedAllowingIdleSystemSleep, reason: "跟随 WhatsApp 聊天画面")
+        }
         watch = app.map(Watch.init(app:))
+        Debug.log("译文层：\(app == nil ? "停止" : "开始")跟随")
         last = nil
         panel.orderOut(nil)
         if let watch { poll(watch, after: 0) }
@@ -82,10 +89,12 @@ final class IncomingOverlay {
                 var next = 0.3
                 switch step {
                 case .moving:
+                    if self.last != nil { Debug.log("译文层：画面在变，收起") }
                     self.last = nil
                     self.show()
                     next = 0.12
                 case .read(let visible):
+                    Debug.log("译文层：读到 \(visible.map { "\($0.bubbles.count) 条要翻的消息" } ?? "没有聊天")")
                     self.last = visible
                     self.show()
                 case .unchanged:
@@ -151,6 +160,7 @@ final class IncomingOverlay {
             labels.append(LabelsView.Label(rect: CGRect(x: x - visible.area.minX, y: y, width: size.width, height: size.height), text: translated))
             floor = y + size.height
         }
+        if labels.count != view.labels.count { Debug.log("译文层：显示 \(labels.count) 条译文") }
         view.labels = labels
         if labels.isEmpty { return panel.orderOut(nil) }
         panel.place(at: visible.area)
@@ -161,9 +171,11 @@ final class IncomingOverlay {
     private func request(_ text: String) {
         guard !inFlight.contains(text), inFlight.count < 3, retryAfter[text].map({ $0 <= Date() }) ?? true else { return }
         inFlight.insert(text)
+        let started = Date()
         client.translate(text, system: Prompts.incoming(language: language())) { [weak self] result in
             guard let self else { return }
             self.inFlight.remove(text)
+            Debug.log("译文层：请求结束 \(Int(Date().timeIntervalSince(started) * 1000))ms \(result.map { _ in "成功" })")
             switch result {
             case .success(let translated):
                 if self.translations.count >= 4000 { self.translations.removeAll() }

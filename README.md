@@ -19,7 +19,7 @@ Telegram 那版是往应用里加一个动态库再重新签名。WhatsApp 不�
 2. 双击 **安装.command**。它会编译、装到 `~/Applications/WATranslate.app`、登记为登录时启动，并立刻启动。
 3. 系统会提示授权：到 **系统设置 › 隐私与安全性 › 辅助功能** 打开 WATranslate。授权后几秒内菜单栏从「WA 待授权」变成「WA 译」。
 
-程序是本机临时签名的，**每次重新安装后要重新授权一次**：在辅助功能列表里把旧的 WATranslate 删掉（选中后点「−」），再打开新的。
+程序是本机临时签名的，每次编译指纹都会变，所以**每次重新安装后要重新打开一次这个开关**。安装脚本会先清掉旧的授权记录，系统会重新弹提示。
 
 卸载双击 **卸载.command**。
 
@@ -44,7 +44,7 @@ Telegram 那版是往应用里加一个动态库再重新签名。WhatsApp 不�
 - 等译文的一两秒里，输入框上方显示「翻译中…」。这时再按发送会被忽略；按别的键、点别处、切走 WhatsApp 都会取消这次发送，草稿不动。
 - 链接、代码和 `@名字` 不会发给翻译接口，也不会被改动。
 - 输入法还在选字时的回车、`@` 或表情候选框开着时的回车，不拦截。
-- 译文是通过「全选 + 粘贴」写进输入框的，会短暂借用剪贴板，写完立刻还原。
+- 译文是通过「全选 + 粘贴」写进输入框的，会短暂借用剪贴板，写完立刻还原；随后程序替你再按一次回车把它发出去。
 
 **收到的消息**
 
@@ -73,4 +73,22 @@ sh build.sh    # 跑 Core 测试，生成 build/WATranslate.app
 - `Sources/App/ChatApp.swift`：在 WhatsApp 界面里找元素。
 - `Sources/App/AppController.swift`：菜单栏和开关。
 
-开发用的两个启动参数：`--target <bundle id>` 换一个被接入的应用，`--support-dir <目录>` 换配置目录。用它们可以让程序对着一个标识相同的替身应用和本机的假翻译接口做端到端测试，不碰真实聊天。
+端到端测试在 `Tests/e2e/`：一个无障碍标识和 WhatsApp 相同的替身聊天应用、一个假翻译接口、一个模拟按键和点击的驱动。
+
+```bash
+sh build.sh && sh Tests/e2e/run.sh    # 占用前台约半分钟，期间别碰键盘鼠标
+```
+
+它靠两个开发用的启动参数让程序对着替身而不是真实聊天：`--target <bundle id>` 换被接入的应用，`--support-dir <目录>` 换配置目录。
+
+## 排查
+
+译文不出来、发送没反应时，先看菜单第一行的状态。还看不出原因就打开日志（只记数量、耗时和状态，不记消息内容）：
+
+```bash
+launchctl setenv WATRANSLATE_DEBUG 1
+launchctl kickstart -k "gui/$(id -u)/com.xiaomai.watranslate"
+tail -f ~/Library/Logs/WATranslate.log
+```
+
+查完执行 `launchctl unsetenv WATRANSLATE_DEBUG` 再 `kickstart` 一次关掉。

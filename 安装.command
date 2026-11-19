@@ -13,6 +13,8 @@ install() {
   mkdir -p "$HOME/Applications" "$HOME/Library/LaunchAgents"
   rm -rf "$app"
   cp -R build/WATranslate.app "$app"
+  # 临时签名的程序每次编译指纹都变，旧的辅助功能授权对不上新程序却还显示为已开启。清掉它，让系统重新询问。
+  tccutil reset Accessibility "$label" >/dev/null 2>&1 || true
   cat > "$agent" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -31,6 +33,8 @@ install() {
 		<key>SuccessfulExit</key>
 		<false/>
 	</dict>
+	<key>StandardErrorPath</key>
+	<string>$HOME/Library/Logs/WATranslate.log</string>
 	<key>LimitLoadToSessionType</key>
 	<string>Aqua</string>
 	<key>ProcessType</key>
@@ -41,7 +45,7 @@ PLIST
   launchctl bootstrap "gui/$(id -u)" "$agent"
   echo
   echo "已安装并启动，菜单栏会出现「WA 译」。"
-  echo "第一次运行（以及每次重新安装后）要在 系统设置 › 隐私与安全性 › 辅助功能 里打开 WATranslate。"
+  echo "系统会弹出授权提示：到 系统设置 › 隐私与安全性 › 辅助功能 把 WATranslate 的开关打开（每次重新安装后都要开一次）。"
 }
 
 (install)

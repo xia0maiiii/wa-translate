@@ -79,6 +79,7 @@ final class SendInterceptor {
 
     /// 返回 true 放行事件，false 吞掉。
     private func receive(_ type: CGEventType, _ event: CGEvent) -> Bool {
+        if event.getIntegerValueField(.eventSourceUserData) == Self.ownEvent { return true }
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             if isEnabled, let tap { CGEvent.tapEnable(tap: tap, enable: true) }
@@ -139,6 +140,18 @@ final class SendInterceptor {
         return code == kVK_Return || code == kVK_ANSI_KeypadEnter
     }
 
+    /// 自己发出的回车带着这个记号，拦截时认出来放行。
+    private static let ownEvent: Int64 = 0x5741_5452
+
+    private static func pressReturn() {
+        for keyDown in [true, false] {
+            guard let event = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_Return), keyDown: keyDown) else { continue }
+            event.flags = []
+            event.setIntegerValueField(.eventSourceUserData, value: ownEvent)
+            event.post(tap: .cgSessionEventTap)
+        }
+    }
+
     private func begin(text: String, composer: AXUIElement, anchor: CGRect?, app: ChatApp) {
         generation += 1
         let current = generation
@@ -156,8 +169,8 @@ final class SendInterceptor {
         pending = Pending(text: text, composer: composer, anchor: anchor, task: task)
     }
 
-    /// 全选草稿 → 粘贴译文 → 按发送按钮。写入走「粘贴」是因为直接改无障碍属性 WhatsApp 不认：
-    /// 文字变了，但它记着的草稿没变。
+    /// 全选草稿 → 粘贴译文 → 替用户再按一次回车。写入走「粘贴」是因为直接改无障碍属性 WhatsApp 不认：
+    /// 文字变了，但它记着的草稿没变。发送走回车是因为 WhatsApp 的发送按钮不响应无障碍的「按下」。
     private func deliver(_ translated: String, _ pending: Pending, _ app: ChatApp) {
         let composer = pending.composer
         func fail(_ message: String) {
@@ -185,17 +198,18 @@ final class SendInterceptor {
                 self.replacing = false
                 return fail("译文没能写进输入框，请检查草稿")
             }
-            guard let button = app.sibling(of: composer, id: ElementID.sendButton) else {
+            // 回车会落到当时有键盘焦点的地方，所以按之前再确认一次焦点还在这个输入框。
+            guard self.frontmostChat()?.pid == app.pid, app.focusedComposer().map({ CFEqual($0, composer) }) == true else {
                 self.replacing = false
-                return fail("找不到发送按钮，译文已在输入框，可以手动发送")
+                return fail("输入框失去了焦点，译文已在输入框，可以手动发送")
             }
-            button.press()
-            self.wait(until: { composer.value != translated }, timeout: 1.5) { sent in
+            Self.pressReturn()
+            self.wait(until: { (composer.value ?? "").isEmpty }, timeout: 1.5) { sent in
                 self.replacing = false
                 if sent {
                     self.report(Report(kind: .sent, message: "译文已发送", anchor: pending.anchor))
                 } else {
-                    fail("发送按钮没有响应，译文已在输入框，可以手动发送")
+                    fail("回车没有把消息发出去，译文已在输入框，可以手动发送")
                 }
             }
         }
