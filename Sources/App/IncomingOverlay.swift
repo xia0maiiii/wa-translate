@@ -1,0 +1,178 @@
+import AppKit
+
+/// 收到的消息翻译：轮询当前聊天里看得见的气泡，把外语消息的译文画在气泡右侧。画面滚动时译文先收起，停稳后再摆。
+/// WhatsApp 是原生应用，没法往它的界面里加东西，所以译文画在一层盖在聊天区上的透明面板里。
+final class IncomingOverlay {
+    var language: () -> String = { "简体中文" }
+    var failed: (String) -> Void = { _ in }
+
+    private struct Visible {
+        struct Item {
+            let frame: CGRect
+            let text: String
+        }
+        let area: CGRect
+        let bubbles: [Item]
+    }
+
+    /// 便宜的一瞥（几次往返）：列表里有哪些气泡、首尾两个在哪、有没有被别的界面盖住。
+    /// 滚动、来新消息、切换聊天、挪窗口都会让它变。
+    private struct Glance: Equatable {
+        let cells: [AXUIElement]
+        let first: CGRect?
+        let last: CGRect?
+        let covered: Bool
+
+        static func == (a: Glance, b: Glance) -> Bool {
+            a.first == b.first && a.last == b.last && a.covered == b.covered
+                && a.cells.count == b.cells.count && zip(a.cells, b.cells).allSatisfy { CFEqual($0, $1) }
+        }
+    }
+
+    /// 一次 follow 对应一个 Watch，里面的状态只在轮询队列上读写。
+    private final class Watch {
+        let app: ChatApp
+        var glance: Glance?
+        var settled = false
+        var lastRead = Date.distantPast
+        /// 用来探测遮挡的点：最靠中间的一个气泡的中心。
+        var probe: CGPoint?
+
+        init(app: ChatApp) {
+            self.app = app
+        }
+    }
+
+    private enum Step {
+        /// 画面在变：先把译文收起来。
+        case moving
+        /// 画面停稳后完整读了一遍。
+        case read(Visible?)
+        case unchanged
+    }
+
+    private let client: TranslationClient
+    private let queue = DispatchQueue(label: "watranslate.poll", qos: .utility)
+    private let panel = OverlayPanel()
+    private let view = LabelsView()
+    private var watch: Watch?
+    private var last: Visible?
+    private var translations: [String: String] = [:]
+    private var inFlight = Set<String>()
+    private var retryAfter: [String: Date] = [:]
+
+    init(client: TranslationClient) {
+        self.client = client
+        panel.contentView = view
+    }
+
+    /// `app` 是在前台的 WhatsApp；不在前台或功能关闭时传 nil，译文层随之隐藏。
+    func follow(_ app: ChatApp?) {
+        watch = app.map(Watch.init(app:))
+        last = nil
+        panel.orderOut(nil)
+        if let watch { poll(watch, after: 0) }
+    }
+
+    private func poll(_ watch: Watch, after delay: TimeInterval) {
+        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            let step = Self.step(watch)
+            DispatchQueue.main.async {
+                guard let self, watch === self.watch else { return }
+                var next = 0.3
+                switch step {
+                case .moving:
+                    self.last = nil
+                    self.show()
+                    next = 0.12
+                case .read(let visible):
+                    self.last = visible
+                    self.show()
+                case .unchanged:
+                    self.show()
+                }
+                self.poll(watch, after: next)
+            }
+        }
+    }
+
+    /// 读气泡的文字要 WhatsApp 的主线程逐个作答，不便宜。所以平时只瞥一眼；
+    /// 画面在变就不读（译文先收起），停稳后读一遍，此后每三秒复查一次。在轮询队列上执行。
+    private static func step(_ watch: Watch) -> Step {
+        let app = watch.app
+        let table = app.messagesTable()
+        let cells = table?.children ?? []
+        if let table, cells.isEmpty, table.identifier != ElementID.messagesTable { app.forgetMessages() }
+        let glance = Glance(cells: cells, first: cells.first?.frame, last: cells.last?.frame,
+                            covered: watch.probe.map { app.hit($0)?.identifier != ElementID.bubble } ?? false)
+        if glance != watch.glance {
+            watch.glance = glance
+            watch.settled = false
+            return .moving
+        }
+        if watch.settled, Date().timeIntervalSince(watch.lastRead) < 3 { return .unchanged }
+        watch.settled = true
+        watch.lastRead = Date()
+        watch.probe = nil
+        guard let table, let area = app.visibleArea(of: table) else { return .read(nil) }
+
+        var bubbles: [Visible.Item] = []
+        for cell in cells {
+            let values = cell.values(["AXIdentifier", "AXDescription", "AXFrame"])
+            guard values[0] as? String == ElementID.bubble, let frame = AX.rect(values[2]), frame.intersects(area) else { continue }
+            let center = CGPoint(x: frame.midX, y: frame.midY)
+            if area.contains(center), watch.probe.map({ abs(center.y - area.midY) < abs($0.y - area.midY) }) ?? true { watch.probe = center }
+            // 靠左的是别人发的。
+            guard frame.minX - area.minX < area.maxX - frame.maxX, let description = values[1] as? String,
+                  let body = Bubble.body(fromDescription: description), TextRules.needsIncomingTranslation(body) else { continue }
+            bubbles.append(Visible.Item(frame: frame, text: body))
+        }
+        // 气泡上面盖着别的界面（看图、弹窗）时不画译文。
+        if let probe = watch.probe, app.hit(probe)?.identifier != ElementID.bubble { bubbles = [] }
+        return .read(Visible(area: area, bubbles: bubbles.sorted { $0.frame.minY < $1.frame.minY }))
+    }
+
+    /// 按最近一次读到的气泡摆译文；还没译的去请求。
+    private func show() {
+        guard let visible = last, !visible.bubbles.isEmpty else { return panel.orderOut(nil) }
+        var labels: [LabelsView.Label] = []
+        var floor = -CGFloat.infinity
+        for bubble in visible.bubbles {
+            guard let translated = translations[bubble.text] else {
+                request(bubble.text)
+                continue
+            }
+            if translated.caseInsensitiveCompare(bubble.text) == .orderedSame { continue }
+            // 气泡右边够宽就贴着气泡放，否则靠聊天区右边缘。
+            let room = visible.area.maxX - bubble.frame.maxX - 20
+            let size = LabelsView.size(of: translated, maxWidth: min(max(room, 180), 460))
+            let x = room >= 180 ? bubble.frame.maxX + 8 : visible.area.maxX - size.width - 12
+            let y = max(bubble.frame.minY - visible.area.minY, floor + 3)
+            labels.append(LabelsView.Label(rect: CGRect(x: x - visible.area.minX, y: y, width: size.width, height: size.height), text: translated))
+            floor = y + size.height
+        }
+        view.labels = labels
+        if labels.isEmpty { return panel.orderOut(nil) }
+        panel.place(at: visible.area)
+        panel.orderFrontRegardless()
+    }
+
+    /// 同时最多三个请求，其余的等前面的回来再发；失败的一分钟后再试。
+    private func request(_ text: String) {
+        guard !inFlight.contains(text), inFlight.count < 3, retryAfter[text].map({ $0 <= Date() }) ?? true else { return }
+        inFlight.insert(text)
+        client.translate(text, system: Prompts.incoming(language: language())) { [weak self] result in
+            guard let self else { return }
+            self.inFlight.remove(text)
+            switch result {
+            case .success(let translated):
+                if self.translations.count >= 4000 { self.translations.removeAll() }
+                self.translations[text] = translated
+                self.show()
+            case .failure(let failure):
+                self.retryAfter[text] = Date().addingTimeInterval(60)
+                self.failed(failure.message)
+            }
+        }
+    }
+}
