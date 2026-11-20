@@ -72,16 +72,33 @@ final class ChatApp {
     }
 
     /// 当前聊天的消息列表；没有打开聊天时为 nil。只在轮询队列上调用。
-    /// 找一次要遍历半个窗口，所以找到后一直用到失效；找不到时隔两秒再找。
+    /// 找一次要遍历半个窗口，所以找到后一直用着；找不到时隔两秒再找。
+    /// 切换聊天后手里的元素可能还答得上话、却已不在屏幕上，调用方要用 `messagesTable(at:)` 核对。
     func messagesTable() -> AXUIElement? {
         if let table { return table }
         guard Date() >= nextSearch else { return nil }
         let window = element.element("AXFocusedWindow") ?? element.element("AXMainWindow") ?? (element.raw("AXWindows") as? [AXUIElement])?.first
-        table = window.flatMap { Self.find(ElementID.messagesTable, in: $0, depth: 12) }
-        header = table.flatMap(Self.header(above:))
-        composer = table.flatMap { sibling(of: $0, id: ElementID.composer) }
+        adopt(window.flatMap { Self.find(ElementID.messagesTable, in: $0, depth: 12) })
         if table == nil { nextSearch = Date().addingTimeInterval(2) }
         return table
+    }
+
+    /// 屏幕上这一点（气泡或列表空白处）属于哪个消息列表；上面盖着别的界面时为 nil。
+    func messagesTable(at point: CGPoint) -> AXUIElement? {
+        var candidate = hit(point)
+        for _ in 0..<3 {
+            guard let current = candidate else { return nil }
+            if current.identifier == ElementID.messagesTable { return current }
+            candidate = current.parent
+        }
+        return nil
+    }
+
+    /// 改用这个消息列表（连同它旁边的标题栏和输入框）。
+    func adopt(_ found: AXUIElement?) {
+        table = found
+        header = found.flatMap(Self.header(above:))
+        composer = found.flatMap { sibling(of: $0, id: ElementID.composer) }
     }
 
     /// 列表里真正看得见的那一段：列表本身一直延伸到标题栏和输入栏的下面。
@@ -93,7 +110,7 @@ final class ChatApp {
         return CGRect(x: area.minX, y: top, width: area.width, height: bottom - top)
     }
 
-    /// 切换聊天后旧的列表元素可能已失效：丢掉，下次重新找。
+    /// 手里的列表读不出东西时丢掉，下次重新找。
     func forgetMessages() {
         table = nil
     }

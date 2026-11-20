@@ -3,6 +3,7 @@ import UIKit
 // WhatsApp 的替身（Mac Catalyst）：同样的无障碍标识、同样的气泡描述格式。
 // 发送时只认 textViewDidChange 记下的草稿（真实 WhatsApp 也是这样：直接改无障碍属性不算数），
 // 发送按钮不响应无障碍的「按下」，只能回车或真实点击。发出去的内容逐行写进 FAKECHAT_LOG。
+// ⌘J 切到另一个聊天：换一个新的消息列表，旧的那个从界面上摘掉但不销毁，仍然答得上无障碍查询。
 let mark = "\u{200E}"
 
 struct Message {
@@ -65,7 +66,9 @@ final class SendButton: UIButton {
 }
 
 final class ChatViewController: UIViewController, UITableViewDataSource, UITextViewDelegate {
-    private let table = UITableView()
+    private var table = UITableView()
+    /// 切走的聊天的消息列表：留着不销毁。
+    private var retired: [UITableView] = []
     private let composer = UITextView()
     private let send = SendButton(type: .system)
     private let voice = UIButton(type: .system)
@@ -89,10 +92,6 @@ final class ChatViewController: UIViewController, UITableViewDataSource, UITextV
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        table.accessibilityIdentifier = "ChatMessagesTableView"
-        table.dataSource = self
-        table.separatorStyle = .none
-        table.register(BubbleCell.self, forCellReuseIdentifier: "bubble")
         composer.accessibilityIdentifier = "ChatBar_ComposerTextView"
         composer.font = .systemFont(ofSize: 14)
         composer.layer.borderColor = UIColor.separator.cgColor
@@ -104,16 +103,12 @@ final class ChatViewController: UIViewController, UITableViewDataSource, UITextV
         send.addTarget(self, action: #selector(sendDraft), for: .touchUpInside)
         voice.setTitle("语音", for: .normal)
         voice.accessibilityIdentifier = "ChatBar_VoiceMessageButton"
-        for subview in [table, composer, send, voice] as [UIView] {
+        for subview in [composer, send, voice] as [UIView] {
             subview.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(subview)
         }
         let guide = view.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            table.topAnchor.constraint(equalTo: guide.topAnchor),
-            table.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
-            table.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
-            table.bottomAnchor.constraint(equalTo: composer.topAnchor, constant: -8),
             composer.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 12),
             composer.heightAnchor.constraint(equalToConstant: 40),
             composer.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -10),
@@ -124,7 +119,39 @@ final class ChatViewController: UIViewController, UITableViewDataSource, UITextV
             voice.centerXAnchor.constraint(equalTo: send.centerXAnchor),
             voice.centerYAnchor.constraint(equalTo: send.centerYAnchor),
         ])
+        installTable()
         updateButtons()
+    }
+
+    private func installTable() {
+        table.accessibilityIdentifier = "ChatMessagesTableView"
+        table.dataSource = self
+        table.separatorStyle = .none
+        table.register(BubbleCell.self, forCellReuseIdentifier: "bubble")
+        table.translatesAutoresizingMaskIntoConstraints = false
+        view.insertSubview(table, at: 0)
+        let guide = view.safeAreaLayoutGuide
+        NSLayoutConstraint.activate([
+            table.topAnchor.constraint(equalTo: guide.topAnchor),
+            table.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
+            table.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
+            table.bottomAnchor.constraint(equalTo: composer.topAnchor, constant: -8),
+        ])
+    }
+
+    override var keyCommands: [UIKeyCommand]? {
+        let command = UIKeyCommand(input: "j", modifierFlags: .command, action: #selector(switchChat))
+        command.wantsPriorityOverSystemBehavior = true
+        return [command]
+    }
+
+    @objc private func switchChat() {
+        table.removeFromSuperview()
+        retired.append(table)
+        table = UITableView()
+        messages = [Message(incoming: true, text: "Obrigado pela compra, volte sempre",
+                            description: "\(mark)消息, Obrigado pela compra, volte sempre, 下午9:55, \(mark)由Bia发送")]
+        installTable()
     }
 
     override func viewDidAppear(_ animated: Bool) {

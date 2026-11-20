@@ -109,11 +109,17 @@ final class IncomingOverlay {
     /// 画面在变就不读（译文先收起），停稳后读一遍，此后每三秒复查一次。在轮询队列上执行。
     private static func step(_ watch: Watch) -> Step {
         let app = watch.app
-        let table = app.messagesTable()
+        var table = app.messagesTable()
+        // 切换聊天后，手里的列表元素可能还答得上话却已不在屏幕上：以屏幕上实际点到的那个为准。
+        let point = watch.probe ?? table?.frame.map { CGPoint(x: $0.midX, y: $0.midY) }
+        let onScreen = point.flatMap(app.messagesTable(at:))
+        if let onScreen, table.map({ !CFEqual($0, onScreen) }) ?? true {
+            app.adopt(onScreen)
+            table = onScreen
+        }
         let cells = table?.children ?? []
-        if let table, cells.isEmpty, table.identifier != ElementID.messagesTable { app.forgetMessages() }
-        let glance = Glance(cells: cells, first: cells.first?.frame, last: cells.last?.frame,
-                            covered: watch.probe.map { app.hit($0)?.identifier != ElementID.bubble } ?? false)
+        // 探测点上点不到消息列表：上面盖着别的界面（看图、弹窗），这时不画译文。
+        let glance = Glance(cells: cells, first: cells.first?.frame, last: cells.last?.frame, covered: point != nil && onScreen == nil)
         if glance != watch.glance {
             watch.glance = glance
             watch.settled = false
@@ -123,7 +129,10 @@ final class IncomingOverlay {
         watch.settled = true
         watch.lastRead = Date()
         watch.probe = nil
-        guard let table, let area = app.visibleArea(of: table) else { return .read(nil) }
+        guard let table, let area = app.visibleArea(of: table) else {
+            app.forgetMessages()
+            return .read(nil)
+        }
 
         var bubbles: [Visible.Item] = []
         for cell in cells {
@@ -136,8 +145,9 @@ final class IncomingOverlay {
                   let body = Bubble.body(fromDescription: description), TextRules.needsIncomingTranslation(body) else { continue }
             bubbles.append(Visible.Item(frame: frame, text: body))
         }
-        // 气泡上面盖着别的界面（看图、弹窗）时不画译文。
-        if let probe = watch.probe, app.hit(probe)?.identifier != ElementID.bubble { bubbles = [] }
+        // 被盖住、或一个气泡也没读到，也可能是手里的列表已经过期：丢掉，下一轮重新找。
+        if glance.covered || watch.probe == nil { app.forgetMessages() }
+        if glance.covered { bubbles = [] }
         return .read(Visible(area: area, bubbles: bubbles.sorted { $0.frame.minY < $1.frame.minY }))
     }
 

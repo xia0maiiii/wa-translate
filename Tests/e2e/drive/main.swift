@@ -64,6 +64,7 @@ case "draft":   // 用 ⌘V 写草稿，走正常输入路径
     if let previous { board.setString(previous, forType: .string) }
 case "return": key(kVK_Return)
 case "left": key(kVK_LeftArrow)
+case "switch-chat": key(kVK_ANSI_J, flags: .maskCommand)
 case "keys":
     let codes: [Character: Int] = ["n": kVK_ANSI_N, "i": kVK_ANSI_I, "h": kVK_ANSI_H, "a": kVK_ANSI_A, "o": kVK_ANSI_O]
     for character in arguments[1] { key(codes[character] ?? { fail("没有键位 \(character)") }()) }

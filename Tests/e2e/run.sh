@@ -5,7 +5,8 @@ set -eu
 cd "$(dirname "$0")"
 root=$(cd ../.. && pwd)
 work="$root/build/e2e"
-helper="$root/build/WATranslate.app/Contents/MacOS/WATranslate"
+# 可以把另一个 WATranslate 可执行文件作为参数传进来（比如已安装的旧版本，用来确认某个用例确实能抓到问题）。
+helper="${1:-$root/build/WATranslate.app/Contents/MacOS/WATranslate}"
 [ -x "$helper" ] || { echo "先运行 build.sh"; exit 1; }
 sdk=$(xcrun --show-sdk-path)
 rm -rf "$work"

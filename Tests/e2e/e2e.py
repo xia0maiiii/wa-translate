@@ -124,6 +124,11 @@ try:
     check(wait(lambda: len(sent()) == count + 1) and "https://a.b/c?d=1" in sent()[-1] and "WAKEEP" not in sent()[-1], "链接原样保留", str(sent()[count:]))
     check(all("https://" not in entry["text"] for entry in requests("out")), "链接没有发给翻译接口")
 
+    print("切换聊天")
+    drive("switch-chat")
+    check(wait(lambda: any(entry["text"].startswith("Obrigado") for entry in requests("in")), 8), "换到另一个聊天后，新聊天里的消息去翻了")
+    check(wait(lambda: drive("labels", str(helper.pid)) == "1", 3), "新聊天的译文显示在屏幕上")
+
     if drive("input-source") == "TISTypeKeyboardInputMode":
         print("输入法选字中")
         count, asked = len(sent()), len(requests("out"))
