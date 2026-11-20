@@ -76,6 +76,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         let wasFrontmost = chatIsFrontmost
         chatIsFrontmost = chat != nil && NSWorkspace.shared.frontmostApplication?.processIdentifier == chat?.pid
+        if notification?.name == NSWorkspace.didActivateApplicationNotification {
+            let activated = (notification?.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
+            Debug.log("前台切换：通知里是 \(activated == chat?.pid ? "WhatsApp" : "别的应用")，判定 WhatsApp 在前台=\(chatIsFrontmost)")
+        }
         if wasFrontmost && !chatIsFrontmost {
             interceptor.chatDeactivated()
             toast.hide()

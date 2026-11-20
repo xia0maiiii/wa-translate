@@ -114,6 +114,7 @@ final class IncomingOverlay {
         let point = watch.probe ?? table?.frame.map { CGPoint(x: $0.midX, y: $0.midY) }
         let onScreen = point.flatMap(app.messagesTable(at:))
         if let onScreen, table.map({ !CFEqual($0, onScreen) }) ?? true {
+            Debug.log("译文层：换用屏幕上的消息列表（之前\(table == nil ? "没有" : "是另一个")）")
             app.adopt(onScreen)
             table = onScreen
         }
@@ -121,6 +122,9 @@ final class IncomingOverlay {
         // 探测点上点不到消息列表：上面盖着别的界面（看图、弹窗），这时不画译文。
         let glance = Glance(cells: cells, first: cells.first?.frame, last: cells.last?.frame, covered: point != nil && onScreen == nil)
         if glance != watch.glance {
+            if glance.covered != watch.glance?.covered, let point {
+                Debug.log("译文层：遮挡判定=\(glance.covered)，探测点命中 \(app.hit(point).map { "\($0.identifier ?? "无标识") \($0.string("AXRole") ?? "")" } ?? "nil")")
+            }
             watch.glance = glance
             watch.settled = false
             return .moving
