@@ -54,6 +54,9 @@ check(Bubble.body(fromDescription: "\(m)照片, Olha o catálogo novo, 下午9:4
 check(Bubble.body(fromDescription: "\(m)消息, \(m)已转发, Promoção só hoje, 下午9:41, \(m)由Ana发送") == "Promoção só hoje", "正文前的标记段去掉")
 check(Bubble.body(fromDescription: "\(m)正在回复\(m)你.\n\(m)消息, Combinado, 下午9:41, \(m)由+ 5 5,4 1发送.\n\(m)引用消息.\nEntrego amanhã, pode ser?") == "Combinado", "回复气泡取本条消息而不是被引用的那条")
 check(Bubble.body(fromDescription: "\(m)消息, Fechado, 下午9:41") == "Fechado", "没有状态段")
+check(Bubble.body(fromDescription: "\(m)消息, Bom dia, tudo bem?, 年11月20日 21:41, \(m)由Ana发送") == "Bom dia, tudo bem?", "带日期的中文时间戳后有状态段")
+check(Bubble.body(fromDescription: "\(m)消息, See you at 10:30, 2026年11月20日 21:41") == "See you at 10:30", "带年份的时间戳后没有状态段")
+check(Bubble.body(fromDescription: "\(m)照片, 11月20日 下午9:41, \(m)由Ana发送") == nil, "带日期的无说明图片没有正文")
 check(Bubble.body(fromDescription: "\(m)消息和通话已进行端到端加密。只有此聊天中的成员可以查看。") == nil, "系统提示不是消息")
 check(Bubble.body(fromDescription: "") == nil && Bubble.body(fromDescription: "plain text, 9:41") == nil, "不是 WhatsApp 文案开头的描述不处理")
 

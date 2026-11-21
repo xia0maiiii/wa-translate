@@ -78,7 +78,7 @@ final class ChatViewController: UIViewController, UITableViewDataSource, UITextV
         let long = "Então podemos fechar o pedido hoje à tarde, eu faço o pagamento por Pix assim que você me mandar a chave. Preciso de 120 unidades para entregar antes do dia 30, consegue confirmar o prazo e o valor do frete para São Paulo?"
         return [
             Message(incoming: true, text: "Bom dia, tudo bem? Você ainda tem o produto disponível?",
-                    description: "\(mark)消息, Bom dia, tudo bem? Você ainda tem o produto disponível?, 下午9:41, \(from)"),
+                    description: "\(mark)消息, Bom dia, tudo bem? Você ainda tem o produto disponível?, 年11月20日 21:41, \(from)"),
             Message(incoming: false, text: "yes, still available",
                     description: "\(mark)你的消息, yes, still available, 下午9:42, \(mark)已发送给+ 5 5,4 1,9 9 9 9 9,0 0 0 0, \(mark)已送达"),
             Message(incoming: true, text: "好的，收到", description: "\(mark)消息, 好的，收到, 下午9:43, \(from)"),
@@ -204,14 +204,23 @@ final class ChatViewController: UIViewController, UITableViewDataSource, UITextV
 }
 
 final class AppDelegate: UIResponder, UIApplicationDelegate {
+    func application(_ application: UIApplication, configurationForConnecting session: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let config = UISceneConfiguration(name: "Chat", sessionRole: session.role)
+        config.delegateClass = SceneDelegate.self
+        return config
+    }
+}
+
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        let window = UIWindow(frame: UIScreen.main.bounds)
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
+        guard let scene = scene as? UIWindowScene else { return }
+        let window = UIWindow(windowScene: scene)
         window.rootViewController = ChatViewController()
         window.makeKeyAndVisible()
         self.window = window
-        return true
     }
 }
 

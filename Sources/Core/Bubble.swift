@@ -9,7 +9,9 @@ import Foundation
 ///     ‎正在回复张三.\n‎你的消息, 正文, 下午9:41, ‎已发送给张三, ‎已读.\n‎引用消息.\n被引用的原文
 enum Bubble {
     private static let mark: Character = "\u{200E}"
-    private static let time = "[^\\d,\\n]{0,8}\\d{1,2}[:.]\\d{2}[^\\d,\\n]{0,8}"
+    // WhatsApp 中文描述里的旧消息时间可带日期，年份数字有时为空。
+    private static let date = "(?:(?:\\d{4})?年)?\\d{1,2}月\\d{1,2}日"
+    private static let time = "(?:\(date)\\h*)?[^\\d,\\n]{0,8}\\d{1,2}[:.]\\d{2}[^\\d,\\n]{0,8}"
     /// 时间段后面跟着状态段；没有状态段时退而取最后一个位于行尾的时间。
     private static let timeBeforeStatus = try! NSRegularExpression(pattern: ", \(time)(?=, \u{200E})")
     private static let timeAtLineEnd = try! NSRegularExpression(pattern: ", \(time)(?=\\.?(\\n|$))")
